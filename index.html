@@ -47,6 +47,78 @@
 
   .retry{margin-top:8px;display:none;font-family:-apple-system,sans-serif}
   .retry a{color:var(--ring1);font-size:13px;text-decoration:underline;cursor:pointer}
+
+  /* ---------- install banner ---------- */
+  #installBanner{
+    position:fixed; left:12px; right:12px; bottom:12px; z-index:20;
+    display:flex; align-items:center; gap:12px;
+    background:linear-gradient(160deg, #101d47 0%, #0b1638 100%);
+    border:1px solid rgba(255,215,106,.25);
+    border-radius:16px;
+    padding:12px 14px;
+    box-shadow:0 10px 30px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.02) inset;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    transform:translateY(140%);
+    opacity:0;
+    transition:transform .4s cubic-bezier(.22,1,.36,1), opacity .4s ease;
+    padding-bottom:calc(12px + env(safe-area-inset-bottom));
+  }
+  #installBanner.show{ transform:translateY(0); opacity:1; }
+
+  #installBanner .ib-icon{
+    width:42px;height:42px;border-radius:11px;flex:0 0 auto;
+    box-shadow:0 0 14px rgba(255,215,106,.25);
+  }
+  #installBanner .ib-text{ flex:1 1 auto; min-width:0; }
+  #installBanner .ib-title{
+    color:#eaf0ff; font-size:13.5px; font-weight:700; letter-spacing:.2px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  #installBanner .ib-sub{
+    color:#8ea0c8; font-size:11.5px; margin-top:2px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  #installBanner .ib-actions{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+  #installBanner .ib-install{
+    background:linear-gradient(160deg, var(--ring1), var(--ring2));
+    color:#1a1200; border:none; border-radius:10px;
+    font-weight:700; font-size:13px; padding:9px 14px;
+    cursor:pointer; white-space:nowrap;
+  }
+  #installBanner .ib-close{
+    background:transparent; border:none; color:#5f6f95;
+    font-size:20px; line-height:1; padding:6px; cursor:pointer;
+  }
+
+  /* iOS instructions sheet */
+  #iosSheet{
+    position:fixed; inset:0; z-index:25; display:none;
+    align-items:flex-end; justify-content:center;
+    background:rgba(2,4,12,.6);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  #iosSheet.show{ display:flex; }
+  #iosSheet .sheet{
+    width:100%; max-width:480px;
+    background:#0e1836; border-radius:18px 18px 0 0;
+    padding:20px 20px calc(20px + env(safe-area-inset-bottom));
+    border:1px solid rgba(255,215,106,.2);
+    animation:sheetUp .35s cubic-bezier(.22,1,.36,1);
+  }
+  @keyframes sheetUp{ from{ transform:translateY(30px); opacity:0 } to{ transform:translateY(0); opacity:1 } }
+  #iosSheet h3{ color:#eaf0ff; font-size:16px; margin:0 0 14px; }
+  #iosSheet h3 span{ color:var(--ring1); }
+  #iosSheet ol{ margin:0 0 16px; padding-left:20px; color:#c3cde6; font-size:13.5px; line-height:1.7; }
+  #iosSheet .share-glyph{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:20px;height:20px; border-radius:5px; background:rgba(255,215,106,.15);
+    color:var(--ring1); font-weight:700; margin:0 2px;
+  }
+  #iosSheet .sheet-close{
+    width:100%; background:rgba(255,255,255,.06); color:#eaf0ff;
+    border:1px solid rgba(255,255,255,.1); border-radius:12px;
+    padding:11px; font-size:13.5px; font-weight:600; cursor:pointer;
+  }
 </style>
 </head>
 <body>
@@ -62,6 +134,32 @@
     <div class="brand">BIR <span>Tax</span> Calculator</div>
     <div class="tagline">Loading</div>
     <div class="retry" id="retry"><a id="retryLink">Taking too long? Tap to retry</a></div>
+  </div>
+
+  <!-- ---------- install banner ---------- -->
+  <div id="installBanner" role="dialog" aria-label="Install app">
+    <img class="ib-icon" src="icon.png" alt="">
+    <div class="ib-text">
+      <div class="ib-title">Install BIR Tax Calculator</div>
+      <div class="ib-sub">Add to your home screen for quick, offline-ready access</div>
+    </div>
+    <div class="ib-actions">
+      <button class="ib-install" id="ibInstallBtn">Install</button>
+      <button class="ib-close" id="ibCloseBtn" aria-label="Dismiss">&times;</button>
+    </div>
+  </div>
+
+  <!-- ---------- iOS "Add to Home Screen" instructions ---------- -->
+  <div id="iosSheet">
+    <div class="sheet">
+      <h3>Install on <span>iPhone / iPad</span></h3>
+      <ol>
+        <li>Tap the <strong>Share</strong> button <span class="share-glyph">&#x2191;</span> in Safari's toolbar</li>
+        <li>Scroll down and tap <strong>Add to Home Screen</strong></li>
+        <li>Tap <strong>Add</strong> in the top right corner</li>
+      </ol>
+      <button class="sheet-close" id="iosSheetClose">Got it</button>
+    </div>
   </div>
 
 <script>
@@ -94,6 +192,98 @@
       navigator.serviceWorker.register('sw.js').catch(function(){});
     });
   }
+
+  // =========================================================
+  // ---- Install banner logic ----
+  // =========================================================
+  (function(){
+    var STORAGE_KEY   = 'birtax_install_dismissed_at';
+    var SNOOZE_DAYS    = 7;           // don't re-show for this many days after dismissal
+    var SHOW_DELAY_MS  = 1800;        // wait a bit after load before showing
+
+    var banner    = document.getElementById('installBanner');
+    var installBtn= document.getElementById('ibInstallBtn');
+    var closeBtn  = document.getElementById('ibCloseBtn');
+    var iosSheet  = document.getElementById('iosSheet');
+    var iosClose  = document.getElementById('iosSheetClose');
+
+    var deferredPrompt = null;
+
+    function isStandalone(){
+      return window.matchMedia('(display-mode: standalone)').matches ||
+             window.navigator.standalone === true; // iOS Safari flag
+    }
+
+    function isIOS(){
+      return /iphone|ipad|ipod/i.test(window.navigator.userAgent) ||
+             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS
+    }
+
+    function recentlyDismissed(){
+      try{
+        var v = localStorage.getItem(STORAGE_KEY);
+        if(!v) return false;
+        var days = (Date.now() - parseInt(v, 10)) / (1000*60*60*24);
+        return days < SNOOZE_DAYS;
+      }catch(e){ return false; }
+    }
+
+    function markDismissed(){
+      try{ localStorage.setItem(STORAGE_KEY, String(Date.now())); }catch(e){}
+    }
+
+    function showBanner(){
+      if(isStandalone() || recentlyDismissed()) return;
+      banner.classList.add('show');
+    }
+
+    function hideBanner(){
+      banner.classList.remove('show');
+    }
+
+    // Chrome/Android/Edge: capture the native install prompt.
+    window.addEventListener('beforeinstallprompt', function(e){
+      e.preventDefault();
+      deferredPrompt = e;
+      setTimeout(showBanner, SHOW_DELAY_MS);
+    });
+
+    // iOS Safari never fires beforeinstallprompt — show our own banner
+    // that opens manual instructions instead.
+    if (isIOS() && !isStandalone()) {
+      setTimeout(showBanner, SHOW_DELAY_MS);
+    }
+
+    installBtn.addEventListener('click', function(){
+      if (deferredPrompt) {
+        hideBanner();
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.finally(function(){ deferredPrompt = null; });
+      } else if (isIOS()) {
+        iosSheet.classList.add('show');
+      } else {
+        // No native prompt available (already installed, unsupported browser, etc.)
+        hideBanner();
+      }
+    });
+
+    closeBtn.addEventListener('click', function(){
+      hideBanner();
+      markDismissed();
+    });
+
+    iosClose.addEventListener('click', function(){
+      iosSheet.classList.remove('show');
+      hideBanner();
+      markDismissed();
+    });
+
+    // If the app gets installed, hide the banner and clear the deferred prompt.
+    window.addEventListener('appinstalled', function(){
+      hideBanner();
+      deferredPrompt = null;
+    });
+  })();
 </script>
 </body>
 </html>
